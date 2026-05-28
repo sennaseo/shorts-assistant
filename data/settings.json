@@ -1,0 +1,6 @@
+{
+  "default_tts_voice": "ko-KR-SunHiNeural",
+  "default_tts_rate": "+0%",
+  "default_video_length": 40,
+  "dry_run_macros": true
+}

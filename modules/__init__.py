@@ -1,0 +1,1 @@
+"""Shorts Assistant pipeline modules."""

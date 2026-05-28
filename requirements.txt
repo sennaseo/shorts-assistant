@@ -1,0 +1,9 @@
+streamlit
+edge-tts
+python-dotenv
+pydub
+mutagen
+pyperclip
+pyautogui
+playwright
+moviepy
