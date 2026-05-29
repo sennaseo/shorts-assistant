@@ -62,6 +62,23 @@ streamlit run app.py
 - `inpock_link_guide.txt`: 인포크 버튼 연결 안내
 - `notion_category_page.md`: Notion 페이지에 붙여넣을 제품 목록 템플릿
 
+## Notion API 자동 추가
+
+Notion API 토큰이 있으면 생성한 `notion_category_page.md` 내용을 Notion 페이지 끝에 자동으로 추가할 수 있습니다.
+
+1. Notion 개발자 페이지에서 integration을 만듭니다.
+2. integration에 콘텐츠 삽입 권한을 줍니다.
+3. 제품 목록으로 쓸 Notion 페이지를 엽니다.
+4. 페이지 오른쪽 위 `...` 메뉴에서 `Connections`에 해당 integration을 연결합니다.
+5. `.env` 파일에 토큰을 넣거나, 앱 화면의 `Notion API 토큰` 입력칸에 붙여넣습니다.
+
+```env
+NOTION_API_KEY=secret_xxx
+NOTION_TARGET_PAGE_ID=https://www.notion.so/...
+```
+
+앱에서 `생성 후 Notion 페이지에 자동 추가`를 켜면 됩니다. API 토큰이 있어도 페이지가 integration에 공유되어 있지 않으면 Notion API는 404를 반환할 수 있습니다.
+
 ## BGM 넣는 법
 
 `assets/bgm` 폴더에 mp3, wav, m4a 파일을 넣어두세요. 파일명에 아래 키워드가 있으면 우선 선택됩니다.

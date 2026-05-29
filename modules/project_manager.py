@@ -9,6 +9,7 @@ from .edge_tts_generator import generate_edge_tts
 from .file_utils import copy_file, ensure_dir, load_json, safe_filename, save_json, timestamp, write_text
 from .image_prompt_generator import save_image_prompts
 from .link_hub_generator import save_link_hub_files
+from .notion_publisher import append_markdown_to_notion_page
 from .reference_manager import save_references
 from .script_generator import generate_script
 from .srt_generator import save_srt
@@ -50,6 +51,9 @@ def run_pipeline(
     references: list[dict[str, str]] | None = None,
     category_links_text: str = "",
     product_items_text: str = "",
+    publish_to_notion: bool = False,
+    notion_api_token: str = "",
+    notion_page_id: str = "",
     tts_voice: str = "ko-KR-SunHiNeural",
     tts_rate: str = "+0%",
     root_dir: str | Path | None = None,
@@ -72,6 +76,13 @@ def run_pipeline(
             raw_product_items=product_items_text,
         )
         product_info["resolved_category_page_url"] = link_hub_paths.get("category_page_url", "")
+
+        if publish_to_notion:
+            notion_markdown = Path(link_hub_paths["notion_category_page"]).read_text(encoding="utf-8")
+            notion_result = append_markdown_to_notion_page(notion_api_token, notion_page_id, notion_markdown)
+            result["notion_publish"] = notion_result
+            if not notion_result.get("success"):
+                result["errors"].append(str(notion_result.get("message")))
 
         save_json(output_dir / "product_info.json", product_info)
         products_path = base / "data" / "products.json"

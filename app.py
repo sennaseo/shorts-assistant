@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import streamlit as st
@@ -85,6 +86,21 @@ with left:
         help="아직 파트너스 활동 전이면 꺼두세요. 실제 유료 제휴 링크를 쓰기 시작할 때만 켜면 됩니다.",
     )
 
+    with st.expander("Notion API로 카테고리 페이지에 바로 추가"):
+        publish_to_notion = st.checkbox("생성 후 Notion 페이지에 자동 추가", value=False)
+        notion_page_id = st.text_input(
+            "Notion 페이지 URL 또는 ID",
+            value=os.getenv("NOTION_TARGET_PAGE_ID", ""),
+            placeholder="https://www.notion.so/...",
+        )
+        notion_api_token_input = st.text_input(
+            "Notion API 토큰",
+            value="",
+            type="password",
+            placeholder=".env에 NOTION_API_KEY가 있으면 비워도 됩니다.",
+        )
+        st.caption("Notion에서 해당 페이지의 ··· 메뉴 > Connections에 만든 integration을 먼저 연결해야 합니다.")
+
     tone = st.selectbox(
         "영상 톤",
         ["친구 추천형", "정보 전달형", "빠른 리뷰형", "감성 자취템형", "직장인 현실 공감형"],
@@ -143,6 +159,12 @@ with right:
         with tabs[3]:
             st.text_area("업로드 문구", value=result.get("upload_info", ""), height=260)
         with tabs[4]:
+            notion_publish = result.get("notion_publish")
+            if notion_publish:
+                if notion_publish.get("success"):
+                    st.success(notion_publish.get("message"))
+                else:
+                    st.warning(notion_publish.get("message"))
             st.text_area("인포크 연결 가이드", value=result.get("link_hub_guide", ""), height=220)
             st.text_area("Notion 카테고리 페이지 템플릿", value=result.get("notion_category_page", ""), height=320)
         with tabs[5]:
@@ -219,6 +241,9 @@ if create:
             references=references,
             category_links_text=category_links_text,
             product_items_text=product_items_text,
+            publish_to_notion=publish_to_notion,
+            notion_api_token=notion_api_token_input or os.getenv("NOTION_API_KEY", ""),
+            notion_page_id=notion_page_id,
             tts_voice=tts_voice,
             tts_rate=tts_rate,
             root_dir=ROOT_DIR,
