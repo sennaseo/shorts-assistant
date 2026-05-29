@@ -38,7 +38,7 @@ def _download_button(label: str, path: Path | None) -> None:
 settings = load_json(ROOT_DIR / "data" / "settings.json", default={}) or {}
 
 st.title("Shorts Assistant")
-st.caption("쿠팡 파트너스 쇼츠/틱톡 제작용 로컬 반자동 파이프라인")
+st.caption("제품 추천 쇼츠/틱톡 제작용 로컬 반자동 파이프라인")
 
 with st.sidebar:
     st.header("설정")
@@ -58,7 +58,12 @@ with left:
     advantage_2 = st.text_input("장점 2", placeholder="예: 책상 밑 공간 활용 가능")
     advantage_3 = st.text_input("장점 3", placeholder="예: 발을 올려두기 편한 각도")
     caution = st.text_input("단점/주의점", placeholder="예: 책상 높이와 발 공간을 확인해야 함")
-    affiliate_link = st.text_input("쿠팡 파트너스 링크", placeholder="https://...")
+    profile_link = st.text_input("인포크/프로필 링크", placeholder="https://link.inpock.co.kr/...")
+    include_partner_disclosure = st.checkbox(
+        "유료 제휴/파트너스 고지 문구 포함",
+        value=False,
+        help="아직 파트너스 활동 전이면 꺼두세요. 실제 제휴 링크를 쓰기 시작할 때만 켜면 됩니다.",
+    )
 
     tone = st.selectbox(
         "영상 톤",
@@ -164,7 +169,9 @@ if create:
         "advantage_2": advantage_2,
         "advantage_3": advantage_3,
         "caution": caution,
-        "affiliate_link": affiliate_link,
+        "profile_link": profile_link,
+        "affiliate_link": profile_link,
+        "include_partner_disclosure": include_partner_disclosure,
         "tone": tone,
         "target_length": target_length,
         "bgm_mood": bgm_mood,
