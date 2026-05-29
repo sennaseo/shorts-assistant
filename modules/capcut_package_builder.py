@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .file_utils import copy_file, ensure_dir, safe_filename
+from .file_utils import copy_file, ensure_dir
 
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"}
@@ -13,6 +13,8 @@ def build_edit_guide(product_info: dict, keywords: list[str], bgm_message: str, 
     name = product_info.get("product_name") or "제품"
     tone = product_info.get("tone") or "친구 추천형"
     length = product_info.get("target_length") or 40
+    category = product_info.get("category") or "카테고리"
+    category_url = product_info.get("resolved_category_page_url") or product_info.get("category_page_url") or product_info.get("profile_link") or ""
     keyword_text = ", ".join(keywords[:8]) if keywords else "제품명, 핵심 장점, 주의점"
     return "\n".join(
         [
@@ -23,6 +25,10 @@ def build_edit_guide(product_info: dict, keywords: list[str], bgm_message: str, 
             f"- 영상 톤: {tone}",
             "- 화면 비율: 9:16",
             "- 컷 편집: 문장 단위로 1.5~4초 템포 유지",
+            "",
+            "## CTA",
+            f"- 영상 말미 문구: 자세한 제품 목록은 프로필 링크의 `{category}`에서 확인해보세요.",
+            f"- 연결할 카테고리 페이지: {category_url or '카테고리 페이지 링크 입력 필요'}",
             "",
             "## 자막",
             "- capcut_subtitles.txt를 기준으로 한 화면 1~2줄 구성",
@@ -41,7 +47,7 @@ def build_edit_guide(product_info: dict, keywords: list[str], bgm_message: str, 
             "1. capcut_package/videos와 images의 소스를 CapCut에 가져옵니다.",
             "2. audio 폴더의 음성/BGM을 타임라인에 배치합니다.",
             "3. subtitles.srt를 불러오거나 capcut_subtitles.txt를 복사해 자막을 만듭니다.",
-            "4. guide 폴더의 업로드 문구와 이미지 프롬프트를 확인합니다.",
+            "4. guide 폴더의 인포크 연결 가이드와 Notion 템플릿을 확인합니다.",
         ]
     )
 
@@ -75,6 +81,13 @@ def build_capcut_package(
         copy_file(output / filename, folders["audio"] / filename)
     for filename in ["subtitles.srt", "capcut_subtitles.txt"]:
         copy_file(output / filename, folders["subtitles"] / filename)
-    for filename in ["edit_guide.txt", "upload_info.txt", "image_prompts.txt", "tiktok_references.txt"]:
+    for filename in [
+        "edit_guide.txt",
+        "upload_info.txt",
+        "image_prompts.txt",
+        "tiktok_references.txt",
+        "notion_category_page.md",
+        "inpock_link_guide.txt",
+    ]:
         copy_file(output / filename, folders["guide"] / filename)
     return package

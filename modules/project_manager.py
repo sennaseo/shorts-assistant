@@ -8,6 +8,7 @@ from .capcut_package_builder import build_capcut_package, build_edit_guide
 from .edge_tts_generator import generate_edge_tts
 from .file_utils import copy_file, ensure_dir, load_json, safe_filename, save_json, timestamp, write_text
 from .image_prompt_generator import save_image_prompts
+from .link_hub_generator import save_link_hub_files
 from .reference_manager import save_references
 from .script_generator import generate_script
 from .srt_generator import save_srt
@@ -47,6 +48,8 @@ def run_pipeline(
     product_image_files: list[Any] | None = None,
     source_video_files: list[Any] | None = None,
     references: list[dict[str, str]] | None = None,
+    category_links_text: str = "",
+    product_items_text: str = "",
     tts_voice: str = "ko-KR-SunHiNeural",
     tts_rate: str = "+0%",
     root_dir: str | Path | None = None,
@@ -60,6 +63,15 @@ def run_pipeline(
         video_dir = ensure_dir(output_dir / "source_videos")
         saved_images = _save_uploaded_sources(product_image_files, image_dir)
         saved_videos = _save_uploaded_sources(source_video_files, video_dir)
+
+        link_hub_paths = save_link_hub_files(
+            product_info,
+            output_dir,
+            base / "data" / "category_links.json",
+            raw_category_links=category_links_text,
+            raw_product_items=product_items_text,
+        )
+        product_info["resolved_category_page_url"] = link_hub_paths.get("category_page_url", "")
 
         save_json(output_dir / "product_info.json", product_info)
         products_path = base / "data" / "products.json"
@@ -93,7 +105,12 @@ def run_pipeline(
         )
         result["files"]["subtitles"] = srt_path
 
-        bgm_result = copy_selected_bgm(base / "assets" / "bgm", output_dir, str(product_info.get("tone") or ""), str(product_info.get("bgm_mood") or ""))
+        bgm_result = copy_selected_bgm(
+            base / "assets" / "bgm",
+            output_dir,
+            str(product_info.get("tone") or ""),
+            str(product_info.get("bgm_mood") or ""),
+        )
         if bgm_result["path"]:
             result["files"]["selected_bgm"] = bgm_result["path"]
 
@@ -101,7 +118,12 @@ def run_pipeline(
         upload_info_path = save_upload_text(product_info, output_dir)
         reference_paths = save_references(references or [], product_info, output_dir, base / "data" / "references.json")
 
-        edit_guide = build_edit_guide(product_info, keywords, str(bgm_result["message"]), "생성 완료" if tts_result["success"] else str(tts_result["error"]))
+        edit_guide = build_edit_guide(
+            product_info,
+            keywords,
+            str(bgm_result["message"]),
+            "생성 완료" if tts_result["success"] else str(tts_result["error"]),
+        )
         edit_guide += "\n\n" + bgm_edit_guide()
         edit_guide_path = write_text(output_dir / "edit_guide.txt", edit_guide)
 
@@ -114,6 +136,8 @@ def run_pipeline(
                 "upload_info": upload_info_path,
                 "edit_guide": edit_guide_path,
                 "tiktok_references": reference_paths["tiktok_references"],
+                "notion_category_page": link_hub_paths["notion_category_page"],
+                "inpock_link_guide": link_hub_paths["inpock_link_guide"],
             }
         )
         result["capcut_package"] = package_path
@@ -123,6 +147,8 @@ def run_pipeline(
         result["typecast_lines"] = "\n".join(typecast_lines)
         result["capcut_subtitles"] = Path(result["files"]["capcut_subtitles"]).read_text(encoding="utf-8")
         result["upload_info"] = Path(upload_info_path).read_text(encoding="utf-8")
+        result["link_hub_guide"] = Path(link_hub_paths["inpock_link_guide"]).read_text(encoding="utf-8")
+        result["notion_category_page"] = Path(link_hub_paths["notion_category_page"]).read_text(encoding="utf-8")
         return result
     except Exception as exc:
         result["errors"].append(f"파이프라인 실행 중 오류: {exc}")

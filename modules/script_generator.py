@@ -19,6 +19,12 @@ def _value(info: Mapping[str, object], key: str, default: str = "") -> str:
     return str(info.get(key) or default).strip()
 
 
+def _cta(category: str) -> str:
+    if category:
+        return f"자세한 제품 목록은 프로필 링크의 {category}에서 확인해봐."
+    return "자세한 제품 목록은 프로필 링크에서 확인해봐."
+
+
 def generate_script(product_info: Mapping[str, object]) -> dict[str, str]:
     name = _value(product_info, "product_name", "추천템")
     category = _value(product_info, "category", "제품")
@@ -31,10 +37,16 @@ def generate_script(product_info: Mapping[str, object]) -> dict[str, str]:
         _value(product_info, "advantage_3", "후기에서 자주 언급되는 만족 포인트"),
     ]
     caution = _value(product_info, "caution", "구매 전 크기와 사용 환경은 꼭 확인해봐.")
-    link = _value(product_info, "profile_link") or _value(product_info, "affiliate_link", "인포크/프로필 링크를 입력하세요.")
+    link = (
+        _value(product_info, "resolved_category_page_url")
+        or _value(product_info, "category_page_url")
+        or _value(product_info, "profile_link")
+        or _value(product_info, "affiliate_link", "인포크/프로필 링크를 입력하세요.")
+    )
 
     opener_template = TONE_OPENERS.get(tone, TONE_OPENERS["친구 추천형"])
     opener = opener_template.format(name=name, category=category, target=target)
+    cta = _cta(category)
 
     if tone == "정보 전달형":
         body = [
@@ -46,7 +58,7 @@ def generate_script(product_info: Mapping[str, object]) -> dict[str, str]:
             f"가격대는 {price_range}라서 비교할 때 부담도 같이 체크하면 좋습니다.",
             f"다만 {caution}",
             f"{category}를 찾고 있었다면 후보에 넣어볼 만해요.",
-            "자세한 정보는 프로필 링크나 설명란에서 확인해보세요.",
+            cta,
         ]
     elif tone == "빠른 리뷰형":
         body = [
@@ -57,7 +69,7 @@ def generate_script(product_info: Mapping[str, object]) -> dict[str, str]:
             f"셋, {advantages[2]}.",
             f"대신 {caution}",
             f"가격대는 {price_range}, 상세페이지랑 후기를 같이 보고 결정하는 걸 추천해.",
-            "관련 정보는 프로필 링크에 정리해둘게.",
+            cta,
         ]
     elif tone == "감성 자취템형":
         body = [
@@ -68,7 +80,7 @@ def generate_script(product_info: Mapping[str, object]) -> dict[str, str]:
             f"후기에서 보이는 포인트는 {advantages[2]}예요.",
             f"다만 {caution}",
             "내 공간에 맞는지 사이즈와 옵션을 확인하고 고르면 더 좋아요.",
-            "제품 정보는 프로필 링크에 남겨둘게요.",
+            cta,
         ]
     elif tone == "직장인 현실 공감형":
         body = [
@@ -79,7 +91,7 @@ def generate_script(product_info: Mapping[str, object]) -> dict[str, str]:
             f"또 {advantages[2]}라는 후기도 자주 볼 수 있어.",
             f"단, {caution}",
             f"{price_range} 정도 예산에서 찾는다면 비교 후보로 넣어봐.",
-            "자세한 정보는 프로필 링크에서 확인해봐.",
+            cta,
         ]
     else:
         body = [
@@ -90,7 +102,7 @@ def generate_script(product_info: Mapping[str, object]) -> dict[str, str]:
             f"후기에서 많이 보이는 장점은 {advantages[2]} 쪽이야.",
             f"다만 {caution}",
             f"가격대는 {price_range}니까 비슷한 제품이랑 같이 비교해봐.",
-            "궁금하면 프로필 링크에서 더 확인해봐.",
+            cta,
         ]
 
     script = "\n".join(body)

@@ -12,23 +12,16 @@ from modules.project_manager import run_pipeline
 ROOT_DIR = Path(__file__).resolve().parent
 load_dotenv(ROOT_DIR / ".env")
 
-
 st.set_page_config(page_title="Shorts Assistant", page_icon="SA", layout="wide")
 
 
-def _read_file(path: Path | None) -> str:
-    if not path or not Path(path).exists():
-        return ""
-    return Path(path).read_text(encoding="utf-8")
-
-
-def _download_button(label: str, path: Path | None) -> None:
+def _download_button(label: str, path: Path | None, mime: str = "text/plain") -> None:
     if path and Path(path).exists():
         st.download_button(
             label=label,
             data=Path(path).read_bytes(),
             file_name=Path(path).name,
-            mime="text/plain" if Path(path).suffix.lower() != ".mp3" else "audio/mpeg",
+            mime=mime,
             use_container_width=True,
         )
     else:
@@ -36,6 +29,7 @@ def _download_button(label: str, path: Path | None) -> None:
 
 
 settings = load_json(ROOT_DIR / "data" / "settings.json", default={}) or {}
+saved_category_links = load_json(ROOT_DIR / "data" / "category_links.json", default={}) or {}
 
 st.title("Shorts Assistant")
 st.caption("제품 추천 쇼츠/틱톡 제작용 로컬 반자동 파이프라인")
@@ -51,25 +45,57 @@ left, right = st.columns([0.95, 1.05], gap="large")
 with left:
     st.subheader("A. 프로젝트 생성")
     product_name = st.text_input("제품명", placeholder="예: 접이식 발받침대")
-    category = st.text_input("카테고리", placeholder="예: 사무실 발받침대")
+    category = st.text_input("카테고리", placeholder="예: 사무실템, 자취템, 주방템")
     price_range = st.text_input("가격대", placeholder="예: 1만~3만원대")
     target_user = st.text_input("타겟 사용자", placeholder="예: 오래 앉아 일하는 직장인")
     advantage_1 = st.text_input("장점 1", placeholder="예: 접어서 보관하기 쉬움")
     advantage_2 = st.text_input("장점 2", placeholder="예: 책상 밑 공간 활용 가능")
     advantage_3 = st.text_input("장점 3", placeholder="예: 발을 올려두기 편한 각도")
     caution = st.text_input("단점/주의점", placeholder="예: 책상 높이와 발 공간을 확인해야 함")
-    profile_link = st.text_input("인포크/프로필 링크", placeholder="https://link.inpock.co.kr/...")
+
+    st.markdown("#### 인포크/카테고리 링크")
+    profile_link = st.text_input("인포크 메인 링크", placeholder="https://link.inpock.co.kr/...")
+    category_page_url = st.text_input(
+        "현재 카테고리 페이지 링크",
+        value=saved_category_links.get(category, "") if category else "",
+        placeholder="예: Notion 카테고리 페이지 공유 링크",
+        help="인포크의 카테고리 버튼이 연결될 Notion/페이지 링크입니다.",
+    )
+    product_detail_url = st.text_input(
+        "제품 상세 링크 또는 임시 링크",
+        placeholder="제품을 모아둔 페이지 안에 넣을 링크. 아직 없으면 비워둬도 됩니다.",
+    )
+    category_links_text = st.text_area(
+        "카테고리별 링크 목록",
+        value="\n".join([f"{name}={url}" for name, url in saved_category_links.items()]),
+        placeholder="생활템=https://...\n주방템=https://...\n사무실템=https://...",
+        help="한 줄에 `카테고리=링크` 형식으로 입력하면 data/category_links.json에 저장됩니다.",
+        height=100,
+    )
+    product_items_text = st.text_area(
+        "카테고리 페이지에 같이 넣을 제품 목록",
+        placeholder="제품명 | 한줄 포인트 | 제품 링크 | 메모/주의점\n예: 미니 가습기 | 책상 위에 두기 좋음 | https://... | 용량 확인",
+        help="현재 제품은 자동으로 목록 맨 위에 추가됩니다. 여기는 같은 카테고리의 추가 제품을 넣을 때 사용하세요.",
+        height=100,
+    )
+    include_current_product_in_link_hub = st.checkbox("현재 제품을 카테고리 제품 목록에 포함", value=True)
     include_partner_disclosure = st.checkbox(
         "유료 제휴/파트너스 고지 문구 포함",
         value=False,
-        help="아직 파트너스 활동 전이면 꺼두세요. 실제 제휴 링크를 쓰기 시작할 때만 켜면 됩니다.",
+        help="아직 파트너스 활동 전이면 꺼두세요. 실제 유료 제휴 링크를 쓰기 시작할 때만 켜면 됩니다.",
     )
 
     tone = st.selectbox(
         "영상 톤",
         ["친구 추천형", "정보 전달형", "빠른 리뷰형", "감성 자취템형", "직장인 현실 공감형"],
     )
-    target_length = st.slider("목표 영상 길이(초)", min_value=20, max_value=60, value=int(settings.get("default_video_length", 40)), step=5)
+    target_length = st.slider(
+        "목표 영상 길이(초)",
+        min_value=20,
+        max_value=60,
+        value=int(settings.get("default_video_length", 40)),
+        step=5,
+    )
     bgm_mood = st.text_input("BGM 분위기", placeholder="예: upbeat, calm, cozy")
 
     product_images = st.file_uploader(
@@ -107,7 +133,7 @@ with right:
         st.text_input("출력 폴더 경로", value=str(result.get("output_dir", "")), disabled=True)
         st.text_input("CapCut 패키지 폴더", value=str(result.get("capcut_package", "")), disabled=True)
 
-        tabs = st.tabs(["대본", "Typecast", "CapCut 자막", "업로드 문구", "파일 다운로드"])
+        tabs = st.tabs(["대본", "Typecast", "CapCut 자막", "업로드 문구", "링크 허브", "파일 다운로드"])
         with tabs[0]:
             st.text_area("생성된 대본", value=result.get("script", ""), height=260)
         with tabs[1]:
@@ -117,6 +143,9 @@ with right:
         with tabs[3]:
             st.text_area("업로드 문구", value=result.get("upload_info", ""), height=260)
         with tabs[4]:
+            st.text_area("인포크 연결 가이드", value=result.get("link_hub_guide", ""), height=220)
+            st.text_area("Notion 카테고리 페이지 템플릿", value=result.get("notion_category_page", ""), height=320)
+        with tabs[5]:
             files = result.get("files", {})
             download_cols = st.columns(2)
             with download_cols[0]:
@@ -124,11 +153,13 @@ with right:
                 _download_button("typecast_lines.txt", files.get("typecast_lines"))
                 _download_button("capcut_subtitles.txt", files.get("capcut_subtitles"))
                 _download_button("upload_info.txt", files.get("upload_info"))
+                _download_button("inpock_link_guide.txt", files.get("inpock_link_guide"))
             with download_cols[1]:
                 _download_button("typecast_lines_numbered.txt", files.get("typecast_lines_numbered"))
                 _download_button("subtitles.srt", files.get("subtitles"))
                 _download_button("edit_guide.txt", files.get("edit_guide"))
                 _download_button("image_prompts.txt", files.get("image_prompts"))
+                _download_button("notion_category_page.md", files.get("notion_category_page"))
 
             audio_path = files.get("edge_tts_test")
             if audio_path and Path(audio_path).exists():
@@ -170,8 +201,11 @@ if create:
         "advantage_3": advantage_3,
         "caution": caution,
         "profile_link": profile_link,
+        "category_page_url": category_page_url,
+        "product_detail_url": product_detail_url,
         "affiliate_link": profile_link,
         "include_partner_disclosure": include_partner_disclosure,
+        "include_current_product_in_link_hub": include_current_product_in_link_hub,
         "tone": tone,
         "target_length": target_length,
         "bgm_mood": bgm_mood,
@@ -183,6 +217,8 @@ if create:
             product_image_files=product_images,
             source_video_files=source_videos,
             references=references,
+            category_links_text=category_links_text,
+            product_items_text=product_items_text,
             tts_voice=tts_voice,
             tts_rate=tts_rate,
             root_dir=ROOT_DIR,
