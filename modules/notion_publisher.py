@@ -31,7 +31,9 @@ def markdown_to_notion_blocks(markdown: str) -> list[dict[str, Any]]:
         line = raw_line.strip()
         if not line:
             continue
-        if line.startswith("### "):
+        if line.startswith("#### "):
+            blocks.append({"object": "block", "type": "heading_3", "heading_3": {"rich_text": _rich_text(line[5:])}})
+        elif line.startswith("### "):
             blocks.append({"object": "block", "type": "heading_3", "heading_3": {"rich_text": _rich_text(line[4:])}})
         elif line.startswith("## "):
             blocks.append({"object": "block", "type": "heading_2", "heading_2": {"rich_text": _rich_text(line[3:])}})

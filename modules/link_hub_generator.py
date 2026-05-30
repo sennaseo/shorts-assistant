@@ -38,6 +38,10 @@ def parse_product_items(raw_text: str) -> list[dict[str, str]]:
                 "description": parts[1] if len(parts) > 1 else "",
                 "url": parts[2] if len(parts) > 2 else "",
                 "memo": parts[3] if len(parts) > 3 else "",
+                "price_range": parts[4] if len(parts) > 4 else "",
+                "target_user": parts[5] if len(parts) > 5 else "",
+                "image_url": parts[6] if len(parts) > 6 else "",
+                "status_memo": parts[7] if len(parts) > 7 else "",
             }
         )
     return [item for item in items if item["name"]]
@@ -70,7 +74,73 @@ def product_item_from_info(product_info: Mapping[str, object]) -> dict[str, str]
         "description": description,
         "url": str(product_info.get("product_detail_url") or product_info.get("profile_link") or "").strip(),
         "memo": caution,
+        "category": str(product_info.get("category") or "").strip(),
+        "price_range": str(product_info.get("price_range") or "").strip(),
+        "target_user": str(product_info.get("target_user") or "").strip(),
+        "advantage_1": advantages[0],
+        "advantage_2": advantages[1],
+        "advantage_3": advantages[2],
+        "caution": caution,
+        "image_url": str(product_info.get("product_image_url") or "").strip(),
+        "option_memo": str(product_info.get("option_memo") or "").strip(),
+        "shipping_memo": str(product_info.get("shipping_memo") or "").strip(),
+        "review_memo": str(product_info.get("review_memo") or "").strip(),
+        "status_memo": str(product_info.get("status_memo") or "").strip(),
+        "personal_note": str(product_info.get("personal_note") or "").strip(),
     }
+
+
+def _line(label: str, value: object, fallback: str = "확인 필요") -> str:
+    text = str(value or "").strip()
+    return f"- {label}: {text or fallback}"
+
+
+def _product_block_lines(index: int, item: Mapping[str, str], product_info: Mapping[str, object]) -> list[str]:
+    category = item.get("category") or str(product_info.get("category") or "")
+    price_range = item.get("price_range") or str(product_info.get("price_range") or "")
+    target = item.get("target_user") or str(product_info.get("target_user") or "")
+    advantages = [
+        item.get("advantage_1") or "",
+        item.get("advantage_2") or "",
+        item.get("advantage_3") or "",
+    ]
+    advantages = [advantage for advantage in advantages if advantage]
+    if not advantages and item.get("description"):
+        advantages = [item.get("description", "")]
+
+    lines = [
+        "",
+        f"### {index}. {item.get('name') or '제품명'}",
+        _line("카테고리", category),
+        _line("가격대", price_range),
+        _line("추천 대상", target),
+        _line("제품 링크", item.get("url"), "제품 링크 입력"),
+        _line("이미지 링크", item.get("image_url"), "이미지 URL 또는 Notion 이미지 블록 추가"),
+        "",
+        "#### 좋아 보이는 포인트",
+    ]
+    for advantage in advantages[:3]:
+        lines.append(f"- {advantage}")
+    if not advantages:
+        lines.append("- 포인트 입력")
+
+    lines.extend(
+        [
+            "",
+            "#### 구매 전 확인",
+            _line("주의점", item.get("caution") or item.get("memo"), "옵션, 사이즈, 후기 확인"),
+            _line("옵션/사이즈", item.get("option_memo"), "색상, 규격, 호환 여부 확인"),
+            _line("배송/품절", item.get("shipping_memo"), "배송비, 도착 예정일, 품절 여부 확인"),
+            _line("후기 메모", item.get("review_memo"), "좋은 후기와 아쉬운 후기 함께 확인"),
+            _line("상태 메모", item.get("status_memo"), "검토중"),
+            _line("개인 메모", item.get("personal_note"), "영상 만들 때 참고할 메모 입력"),
+            "",
+            "#### 영상에서 쓸 문구",
+            f"- {item.get('name') or '이 제품'} 제품은 {target or '필요한 사람'}에게 좋아 보이는 {category or '추천템'} 후보예요.",
+            "- 구매 전 가격, 옵션, 배송 조건은 상세페이지에서 다시 확인하세요.",
+        ]
+    )
+    return lines
 
 
 def generate_notion_category_page(
@@ -101,15 +171,7 @@ def generate_notion_category_page(
         product_items = [product_item_from_info(product_info)]
 
     for index, item in enumerate(product_items, start=1):
-        lines.extend(
-            [
-                "",
-                f"### {index}. {item.get('name') or '제품명'}",
-                f"- 한줄 포인트: {item.get('description') or '제품 포인트 입력'}",
-                f"- 제품 링크: {item.get('url') or '제품 링크 입력'}",
-                f"- 메모/주의점: {item.get('memo') or '옵션, 사이즈, 후기 확인'}",
-            ]
-        )
+        lines.extend(_product_block_lines(index, item, product_info))
 
     lines.extend(
         [

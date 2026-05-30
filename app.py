@@ -66,6 +66,31 @@ with left:
         "제품 상세 링크 또는 임시 링크",
         placeholder="제품을 모아둔 페이지 안에 넣을 링크. 아직 없으면 비워둬도 됩니다.",
     )
+    product_image_url = st.text_input(
+        "제품 이미지 URL",
+        placeholder="Notion에 표시할 대표 이미지 URL이 있으면 입력",
+    )
+    option_memo = st.text_input(
+        "옵션/사이즈 메모",
+        placeholder="예: 색상, 규격, 호환 여부, 책상 높이 확인",
+    )
+    shipping_memo = st.text_input(
+        "배송/품절 메모",
+        placeholder="예: 로켓배송 여부, 배송비, 품절 가능성",
+    )
+    review_memo = st.text_input(
+        "후기 메모",
+        placeholder="예: 후기에서 자주 보이는 장점/아쉬운 점",
+    )
+    status_memo = st.selectbox(
+        "제품 상태",
+        ["검토중", "쇼츠 제작 예정", "업로드 완료", "링크 확인 필요", "숨김"],
+    )
+    personal_note = st.text_area(
+        "개인 메모",
+        placeholder="예: 영상에서 강조할 장면, 썸네일 문구, 나중에 확인할 점",
+        height=80,
+    )
     category_links_text = st.text_area(
         "카테고리별 링크 목록",
         value="\n".join([f"{name}={url}" for name, url in saved_category_links.items()]),
@@ -75,7 +100,7 @@ with left:
     )
     product_items_text = st.text_area(
         "카테고리 페이지에 같이 넣을 제품 목록",
-        placeholder="제품명 | 한줄 포인트 | 제품 링크 | 메모/주의점\n예: 미니 가습기 | 책상 위에 두기 좋음 | https://... | 용량 확인",
+        placeholder="제품명 | 한줄 포인트 | 제품 링크 | 메모/주의점 | 가격대 | 추천 대상 | 이미지 URL | 상태\n예: 미니 가습기 | 책상 위에 두기 좋음 | https://... | 용량 확인 | 2만원대 | 자취생 | https://...jpg | 검토중",
         help="현재 제품은 자동으로 목록 맨 위에 추가됩니다. 여기는 같은 카테고리의 추가 제품을 넣을 때 사용하세요.",
         height=100,
     )
@@ -225,6 +250,12 @@ if create:
         "profile_link": profile_link,
         "category_page_url": category_page_url,
         "product_detail_url": product_detail_url,
+        "product_image_url": product_image_url,
+        "option_memo": option_memo,
+        "shipping_memo": shipping_memo,
+        "review_memo": review_memo,
+        "status_memo": status_memo,
+        "personal_note": personal_note,
         "affiliate_link": profile_link,
         "include_partner_disclosure": include_partner_disclosure,
         "include_current_product_in_link_hub": include_current_product_in_link_hub,

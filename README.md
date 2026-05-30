@@ -62,6 +62,23 @@ streamlit run app.py
 - `inpock_link_guide.txt`: 인포크 버튼 연결 안내
 - `notion_category_page.md`: Notion 페이지에 붙여넣을 제품 목록 템플릿
 
+Notion 제품 카드에는 아래 정보를 넣을 수 있습니다.
+
+- 제품명
+- 카테고리
+- 가격대
+- 추천 대상
+- 제품 링크
+- 제품 이미지 URL
+- 좋아 보이는 포인트 3개
+- 주의점
+- 옵션/사이즈 메모
+- 배송/품절 메모
+- 후기 메모
+- 제품 상태
+- 개인 메모
+- 영상에서 쓸 문구
+
 ## Notion API 자동 추가
 
 Notion API 토큰이 있으면 생성한 `notion_category_page.md` 내용을 Notion 페이지 끝에 자동으로 추가할 수 있습니다.
