@@ -1,9 +1,13 @@
+# 핵심 (앱 실행 + 초안 영상 렌더링) — 서버 배포 시 이것만 있으면 됩니다
 streamlit
 edge-tts
 python-dotenv
-pydub
 mutagen
+moviepy
+pillow
+
+# 로컬 전용 (macro 모듈 확장용, 서버에서는 불필요)
+pydub
 pyperclip
 pyautogui
 playwright
-moviepy

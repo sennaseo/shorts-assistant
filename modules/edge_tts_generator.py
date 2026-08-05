@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 
 
@@ -24,8 +25,17 @@ def generate_edge_tts(
     clean_text = "\n".join(line.strip() for line in text.splitlines() if line.strip())
     if not clean_text:
         return {"path": None, "success": False, "error": "TTS로 변환할 문장이 없습니다."}
-    try:
-        asyncio.run(_save_tts(clean_text, output_path, voice, rate))
-        return {"path": output_path, "success": True, "error": ""}
-    except Exception as exc:
-        return {"path": None, "success": False, "error": f"Edge TTS 생성 실패: {exc}"}
+    last_error = ""
+    # ponytail: 재시도 1회 고정 (일시적 네트워크 오류 대응). 더 필요하면 백오프 추가
+    for attempt in range(2):
+        try:
+            asyncio.run(_save_tts(clean_text, output_path, voice, rate))
+            if output_path.exists() and output_path.stat().st_size > 0:
+                return {"path": output_path, "success": True, "error": ""}
+            last_error = "생성된 파일이 비어 있습니다 (0바이트)."
+        except Exception as exc:
+            last_error = f"Edge TTS 생성 실패: {exc}"
+        output_path.unlink(missing_ok=True)
+        if attempt == 0:
+            time.sleep(2.5)
+    return {"path": None, "success": False, "error": last_error}

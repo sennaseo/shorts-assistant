@@ -27,7 +27,36 @@ streamlit run app.py
 
 브라우저가 열리면 제품명, 카테고리, 가격대, 타겟 사용자, 장점 3개, 주의점, 인포크/프로필 링크를 입력하고 `쇼츠 패키지 생성`을 누릅니다.
 
+앱은 세 개의 탭으로 구성됩니다.
+
+- **패키지 생성**: 기존 생성 화면
+- **히스토리**: `outputs/`에 쌓인 과거 프로젝트를 골라 대본/자막/업로드 문구를 다시 보고 다운로드
+- **제품 관리**: `data/products.json`에 자동 저장된 제품 목록을 표에서 수정/삭제하고 CSV로 다운로드
+
+사이드바에서 TTS 음성/속도와 기본 인포크 링크를 입력한 뒤 `설정 저장`을 누르면 `data/settings.json`에 저장되어 다음 실행부터 자동으로 채워집니다.
+
 아직 유료 제휴나 파트너스 활동을 하지 않는 단계라면 `유료 제휴/파트너스 고지 문구 포함` 옵션은 꺼두세요. 나중에 실제 제휴 링크를 쓰기 시작하면 이 옵션을 켜서 업로드 문구에 고지를 포함할 수 있습니다.
+
+## 서버 배포 (Streamlit Community Cloud)
+
+폰이나 다른 PC에서 쓰고 싶으면 무료로 배포할 수 있습니다.
+
+1. 이 폴더를 GitHub **비공개 저장소**로 올립니다.
+2. https://share.streamlit.io 에서 GitHub 계정으로 로그인 후 `New app` → 저장소 선택, Main file은 `app.py`.
+3. 앱 설정의 **Secrets**에 아래를 넣습니다.
+
+```toml
+APP_PASSWORD = "원하는_비밀번호"
+ANTHROPIC_API_KEY = "sk-ant-..."
+```
+
+`APP_PASSWORD`를 넣으면 접속 시 비밀번호를 요구합니다(로컬에서는 설정하지 않으면 그대로 통과). 배포 시 `requirements.txt`의 "로컬 전용" 블록은 지워도 됩니다.
+
+서버 배포 시 알아둘 점:
+
+- 서버 저장소는 재시작 때 초기화되므로 결과는 `파일 다운로드` 탭의 **전체 결과 zip 다운로드**로 바로 받으세요. 제품 DB(products.json)도 휘발성이니 중요하면 제품 관리 탭에서 CSV로 백업.
+- moviepy 렌더링은 무료 서버에서 느릴 수 있습니다(짧은 영상 기준 1~3분).
+- 같은 와이파이 안에서만 쓸 거면 배포 없이 `streamlit run app.py --server.address 0.0.0.0`으로 실행하고 폰에서 `http://PC내부IP:8501`로 접속하면 됩니다.
 
 ## 인포크 연결 방식
 
@@ -106,6 +135,15 @@ NOTION_TARGET_PAGE_ID=https://www.notion.so/...
 
 BGM이 없어도 패키지 생성은 계속 진행됩니다.
 
+## 초안 영상 자동 렌더링
+
+`초안 영상 자동 렌더링 (mp4)` 옵션을 켜면 업로드한 제품 이미지 + Edge TTS 음성 + 자막을 합쳐 9:16 초안 영상(`draft_video.mp4`)을 만듭니다. CapCut 패키지의 `videos` 폴더에도 복사됩니다.
+
+- 용도: 대본 길이/타이밍/구성 확인, 빠른 대량 업로드 테스트
+- 한계: 이미지 슬라이드쇼 수준이므로 반응이 좋은 제품은 CapCut에서 다듬는 것을 추천
+- 자막 폰트: `assets/fonts`에 한글 TTF를 넣으면 우선 사용, 없으면 Windows 맑은고딕 사용
+- 실패해도 나머지 파일 생성은 계속 진행됩니다 (moviepy/ffmpeg 문제 시 경고만 표시)
+
 ## 이미지/영상 업로드
 
 Streamlit 화면에서 제품 이미지와 영상 소스를 업로드하면 출력 폴더의 `source_product_images`, `source_videos`에 저장되고, `capcut_package/images`, `capcut_package/videos`에도 복사됩니다. 저작권 리스크를 줄이기 위해 기본 워크플로우는 직접 준비한 소스 기반입니다.
@@ -166,15 +204,21 @@ CapCut에서는 `capcut_package` 폴더 안의 파일을 가져오면 됩니다.
 - 대기 시간
 - dry-run 여부
 
-## LLM API 확장
+## Claude API 대본 생성
 
-초기 버전은 API 키 없이 템플릿 기반으로 실행됩니다. 나중에 OpenAI API나 Claude API를 붙일 때는 `modules/script_generator.py`의 `generate_script(product_info)` 구조를 유지한 채 내부 구현만 교체하면 됩니다.
+기본은 API 키 없이 동작하는 템플릿 대본입니다. 더 자연스러운 대본을 원하면 Claude API를 연결할 수 있습니다.
+
+1. `.env`에 `ANTHROPIC_API_KEY=sk-ant-...`를 넣습니다. (또는 사이드바에 직접 입력)
+2. 사이드바의 `Claude API로 대본 생성`을 켭니다.
+3. API 호출이 실패하면 자동으로 템플릿 대본으로 대체되고 경고가 표시됩니다.
+
+모델은 기본 `claude-sonnet-4-5`이며 `.env`의 `ANTHROPIC_MODEL`로 바꿀 수 있습니다. 구현은 `modules/llm_script_generator.py`에 있습니다.
 
 `.env.example`:
 
 ```env
-OPENAI_API_KEY=
 ANTHROPIC_API_KEY=
+ANTHROPIC_MODEL=claude-sonnet-4-5
 USE_LLM=false
 DEFAULT_TTS_VOICE=ko-KR-SunHiNeural
 ```

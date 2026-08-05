@@ -9,7 +9,13 @@ VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"}
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
 
-def build_edit_guide(product_info: dict, keywords: list[str], bgm_message: str, tts_message: str) -> str:
+def build_edit_guide(
+    product_info: dict,
+    keywords: list[str],
+    bgm_message: str,
+    tts_message: str,
+    higgsfield_message: str = "",
+) -> str:
     name = product_info.get("product_name") or "제품"
     tone = product_info.get("tone") or "친구 추천형"
     length = product_info.get("target_length") or 40
@@ -42,6 +48,7 @@ def build_edit_guide(product_info: dict, keywords: list[str], bgm_message: str, 
             "- BGM 페이드인 0.3초, 페이드아웃 0.5초",
             f"- BGM 상태: {bgm_message}",
             f"- Edge TTS 상태: {tts_message}",
+            f"- Higgsfield AI 영상 상태: {higgsfield_message or 'HIGGSFIELD_API_KEY 미설정 (건너뜀)'}",
             "",
             "## 패키지 사용 순서",
             "1. capcut_package/videos와 images의 소스를 CapCut에 가져옵니다.",
@@ -77,8 +84,10 @@ def build_capcut_package(
         if src.suffix.lower() in IMAGE_EXTENSIONS:
             copy_file(src, folders["images"] / src.name)
 
-    for filename in ["edge_tts_test.mp3", "selected_bgm.mp3"]:
+    for filename in ["edge_tts_test.mp3", "edge_tts_test.wav", "selected_bgm.mp3"]:
         copy_file(output / filename, folders["audio"] / filename)
+    for filename in ["higgsfield_clip.mp4"]:
+        copy_file(output / filename, folders["videos"] / filename)
     for filename in ["subtitles.srt", "capcut_subtitles.txt"]:
         copy_file(output / filename, folders["subtitles"] / filename)
     for filename in [

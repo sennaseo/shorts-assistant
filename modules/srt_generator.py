@@ -23,11 +23,20 @@ def get_audio_duration_seconds(audio_path: str | Path | None) -> float | None:
     try:
         from mutagen import File
 
+        # 태그 없는 파일은 bool(audio)가 False라서 `if audio`로 검사하면 안 된다
         audio = File(path)
-        if audio and audio.info and getattr(audio.info, "length", None):
+        if audio is not None and audio.info and getattr(audio.info, "length", None):
             return float(audio.info.length)
     except Exception:
-        return None
+        pass
+    if path.suffix.lower() == ".wav":
+        try:
+            import wave
+
+            with wave.open(str(path)) as handle:
+                return handle.getnframes() / handle.getframerate()
+        except Exception:
+            return None
     return None
 
 

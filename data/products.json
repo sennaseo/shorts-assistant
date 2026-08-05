@@ -1,1 +1,16 @@
-[]
+[
+  {
+    "product_name": "스텐 보온 텀블러",
+    "category": "생활용품",
+    "price_range": "1만~2만원대",
+    "target_user": "출퇴근 직장인",
+    "advantage_1": "12시간 보온 유지",
+    "advantage_2": "완전 밀폐로 가방에 넣어도 안샘",
+    "advantage_3": "손에 딱 맞는 슬림 그립",
+    "caution": "전자레인지 사용 불가",
+    "tone": "친구 추천형",
+    "target_length": 40,
+    "profile_link": "https://link.inpock.co.kr/example",
+    "resolved_category_page_url": "https://link.inpock.co.kr/example"
+  }
+]
