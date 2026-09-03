@@ -1,0 +1,20 @@
+name: shorts
+
+services:
+  web:
+    build: {context: .., dockerfile: deploy/Dockerfile}
+    container_name: shorts-web
+    env_file: ../.env
+    environment:
+      PIPELINE_HOST: 0.0.0.0
+    volumes:
+      - shorts_outputs:/app/outputs
+    networks: [proxy-net]
+    restart: unless-stopped
+
+volumes:
+  shorts_outputs:
+
+networks:
+  proxy-net:
+    external: true

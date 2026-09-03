@@ -17,3 +17,6 @@ assets/source_videos/*
 !assets/source_videos/.gitkeep
 assets/generated_images/*
 !assets/generated_images/.gitkeep
+
+deploy/.env
+deploy/nginx/*.generated.conf

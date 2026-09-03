@@ -1,0 +1,6 @@
+edge-tts
+python-dotenv
+mutagen
+moviepy
+pillow
+numpy

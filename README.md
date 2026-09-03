@@ -50,26 +50,29 @@ python pipeline_server.py        # http://localhost:8787
   - **GPT** — OpenAI Images API(`gpt-image-2`, `OPENAI_IMAGE_MODEL`로 교체 가능). `.env`의 `OPENAI_API_KEY`만 있으면 되고 **API 크레딧**에서 차감된다(ChatGPT 구독 쿼터 아님). 첨부 없으면 `/v1/images/generations`, 첨부가 있으면 `/v1/images/edits`로 간다. 폭·높이가 16의 배수여야 해서 비율→크기는 `SIZE_BY_ASPECT`로 고정 매핑(9:16 → 1024x1824).
   - **참고 이미지 순서** — 두 엔진 모두 첨부가 2장 이상이면 프롬프트 앞에 `first image = …, second image = …` 라벨이 자동으로 붙어 "첫 번째 사진의 인물을 두 번째 사진 배경에"처럼 번호로 지목할 수 있다. UI 썸네일에도 ①②③ 번호가 표시된다.
 
-## 서버 배포 (Streamlit Community Cloud)
+## 서버 배포 (오라클 A1 · Docker · 공유 nginx)
 
-폰이나 다른 PC에서 쓰고 싶으면 무료로 배포할 수 있습니다.
+Reel Radar 와 같은 서버에 형제 서비스로 올린다. 폰에서 `https://<DOMAIN>` 으로 접속하고, `APP_PASSWORD` 로 잠근다.
 
-1. 이 폴더를 GitHub **비공개 저장소**로 올립니다.
-2. https://share.streamlit.io 에서 GitHub 계정으로 로그인 후 `New app` → 저장소 선택, Main file은 `app.py`.
-3. 앱 설정의 **Secrets**에 아래를 넣습니다.
+**senna 가 먼저 할 것 (1회)**
+1. DuckDNS 에서 서브도메인 추가 (예: `shorts-maker`) → 서버 IP 로.
+2. GitHub `sennaseo/shorts-assistant` 저장소 Settings → Deploy keys 에 서버의 읽기 전용 키 등록
+   (서버에서 `ssh-keygen -t ed25519 -f ~/.ssh/shorts_deploy -N ""` 후 `.pub` 내용).
 
-```toml
-APP_PASSWORD = "원하는_비밀번호"
-ANTHROPIC_API_KEY = "sk-ant-..."
+**서버에서**
+```bash
+GIT_SSH_COMMAND="ssh -i ~/.ssh/shorts_deploy" git clone git@github.com:sennaseo/shorts-assistant.git ~/shorts-assistant
+cd ~/shorts-assistant && git config core.sshCommand "ssh -i ~/.ssh/shorts_deploy"
+cp .env.example .env && nano .env      # DOMAIN, APP_PASSWORD, OPENAI_API_KEY, (선택) HIGGSFIELD_*
+deploy/first_deploy.sh
 ```
 
-`APP_PASSWORD`를 넣으면 접속 시 비밀번호를 요구합니다(로컬에서는 설정하지 않으면 그대로 통과). 배포 시 `requirements.txt`의 "로컬 전용" 블록은 지워도 됩니다.
+재배포: `~/shorts-assistant/deploy/redeploy.sh`
 
-서버 배포 시 알아둘 점:
-
-- 서버 저장소는 재시작 때 초기화되므로 결과는 `파일 다운로드` 탭의 **전체 결과 zip 다운로드**로 바로 받으세요. 제품 DB(products.json)도 휘발성이니 중요하면 제품 관리 탭에서 CSV로 백업.
-- moviepy 렌더링은 무료 서버에서 느릴 수 있습니다(짧은 영상 기준 1~3분).
-- 같은 와이파이 안에서만 쓸 거면 배포 없이 `streamlit run app.py --server.address 0.0.0.0`으로 실행하고 폰에서 `http://PC내부IP:8501`로 접속하면 됩니다.
+**서버에서 다른 점**
+- Voicebox 가 없으니 TTS 는 Edge TTS 로 자동 폴백된다.
+- 산출물은 도커 볼륨 `shorts_outputs` 에 남는다. 폰에선 결과 화면의 "전체 zip 다운로드"로 받는다 ("폴더 열기"는 로컬에서만 보임).
+- 로그: `cd ~/shorts-assistant/deploy && docker compose logs -f web`
 
 ## 인포크 연결 방식
 

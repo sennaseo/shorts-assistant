@@ -1,0 +1,12 @@
+outputs/
+.venv/
+venv/
+__pycache__/
+*.log
+.git/
+.superpowers/
+tests/
+assets/bgm/
+assets/source_videos/
+assets/generated_images/
+assets/product_images/
