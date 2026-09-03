@@ -13,6 +13,8 @@ shorts-assistant의 실제 모듈들이 노드 순서대로 실행되고,
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import os
 import queue
@@ -23,6 +25,7 @@ import time
 import traceback
 import uuid
 from datetime import datetime
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -58,6 +61,21 @@ IMAGE_UI_FILE = ROOT / "image_ui.html"
 
 RUNS: dict[str, dict] = {}   # run_id -> {"q": Queue, "history": [], "done": bool}
 RUNS_LOCK = threading.Lock()
+
+LOGIN_HTML = """<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>쇼츠 만들기 — 로그인</title>
+<style>
+body{font-family:'Segoe UI','Malgun Gothic','Apple SD Gothic Neo',sans-serif;background:#f2f4ef;color:#111413;
+ margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;letter-spacing:-.02em}
+form{background:#fff;border-radius:28px;padding:32px 24px;width:min(92vw,380px);box-shadow:0 10px 26px rgba(17,20,19,.06)}
+h1{font-size:22px;font-weight:900;margin:0 0 6px}p{color:#5d645f;font-size:14px;margin:0 0 20px}
+input{width:100%;box-sizing:border-box;font-size:17px;padding:16px;border:none;border-radius:16px;background:#f3f5f1;margin-bottom:12px}
+button{width:100%;font-size:17px;font-weight:800;padding:16px;border:none;border-radius:16px;background:#00d55e;color:#0b3d20}
+button:active{transform:scale(.97)}.err{color:#e5484d;font-weight:700}
+</style></head><body><form method="post" action="/login">
+<h1>쇼츠 만들기</h1><p>비밀번호를 입력하세요</p>{error}
+<input type="password" name="password" autofocus autocomplete="current-password" placeholder="비밀번호">
+<button type="submit">들어가기</button></form></body></html>"""
 
 
 # ─────────────────────────── 이벤트 버스 ───────────────────────────
@@ -574,9 +592,37 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
                 remaining -= len(data)
 
+    # ── 인증 (APP_PASSWORD) ──
+    def _auth_token(self) -> str:
+        return hashlib.sha256(APP_PASSWORD.encode("utf-8")).hexdigest()
+
+    def _authed(self) -> bool:
+        if not APP_PASSWORD:
+            return True
+        c = SimpleCookie(self.headers.get("Cookie", ""))
+        got = c["auth"].value if "auth" in c else ""
+        return hmac.compare_digest(got, self._auth_token())
+
+    def _deny(self, path: str) -> None:
+        if path.startswith("/api/") or path.startswith("/files/"):
+            self._json(401, {"error": "로그인이 필요합니다."})
+        else:
+            self._send(302, b"", "text/plain", {"Location": "/login"})
+
+    def _login_page(self, error: str = "") -> None:
+        html = LOGIN_HTML.replace("{error}", f'<p class="err">{error}</p>' if error else "")
+        self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
+
     # ── GET ──
     def do_GET(self):
         path = unquote(urlparse(self.path).path)
+
+        if path == "/login":
+            self._login_page()
+            return
+        if not self._authed():
+            self._deny(path)
+            return
 
         if path in ("/", "/index.html"):
             if UI_FILE.exists():
@@ -658,6 +704,21 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
+
+        if path == "/login":
+            length = int(self.headers.get("Content-Length", "0"))
+            form = parse_qs(self.rfile.read(length).decode("utf-8", "replace"))
+            pw = (form.get("password") or [""])[0]
+            if APP_PASSWORD and hmac.compare_digest(pw, APP_PASSWORD):
+                secure = "; Secure" if self.headers.get("X-Forwarded-Proto") == "https" else ""
+                cookie = f"auth={self._auth_token()}; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax{secure}"
+                self._send(302, b"", "text/plain", {"Location": "/", "Set-Cookie": cookie})
+            else:
+                self._login_page("비밀번호가 틀렸어요")
+            return
+        if not self._authed():
+            self._deny(path)
+            return
 
         if path == "/api/upload-image":
             try:

@@ -54,3 +54,54 @@ def test_health_has_local_flag(server):
 
 def test_host_env_default():
     assert ps.HOST == os.environ.get("PIPELINE_HOST", "127.0.0.1")
+
+
+def test_no_password_means_open(server):
+    code, _, _ = get(server + "/")
+    assert code == 200
+
+
+def test_password_gate_redirects_html_and_401_api(server, monkeypatch):
+    monkeypatch.setattr(ps, "APP_PASSWORD", "secret1")
+    # HTML은 /login 으로
+    req = urllib.request.Request(server + "/")
+    opener = urllib.request.build_opener(_NoRedirect())
+    try:
+        r = opener.open(req, timeout=5)
+        code, loc = r.status, r.headers.get("Location")
+    except urllib.error.HTTPError as e:
+        code, loc = e.code, e.headers.get("Location")
+    assert code == 302 and loc == "/login"
+    # API는 401 JSON
+    code, _, body = get(server + "/api/health")
+    assert code == 401 and json.loads(body)["error"]
+    # 로그인 페이지 자체는 열림
+    code, _, body = get(server + "/login")
+    assert code == 200 and b"password" in body
+
+
+def test_login_sets_cookie_and_passes(server, monkeypatch):
+    monkeypatch.setattr(ps, "APP_PASSWORD", "secret1")
+    # 틀린 비번
+    code, _, body = post(server + "/login", b"password=wrong",
+                         {"Content-Type": "application/x-www-form-urlencoded"})
+    assert code == 200 and "틀렸".encode("utf-8") in body
+    # 맞는 비번 → 302 + Set-Cookie
+    req = urllib.request.Request(server + "/login", data=b"password=secret1", method="POST",
+                                 headers={"Content-Type": "application/x-www-form-urlencoded"})
+    opener = urllib.request.build_opener(_NoRedirect())
+    try:
+        r = opener.open(req, timeout=5); code, hdrs = r.status, r.headers
+    except urllib.error.HTTPError as e:
+        code, hdrs = e.code, e.headers
+    assert code == 302 and hdrs.get("Location") == "/"
+    cookie = hdrs.get("Set-Cookie")
+    assert cookie and cookie.startswith("auth=") and "HttpOnly" in cookie
+    token = cookie.split(";")[0]
+    code, _, _ = get(server + "/api/health", {"Cookie": token})
+    assert code == 200
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None
