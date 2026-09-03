@@ -37,6 +37,19 @@ streamlit run app.py
 
 아직 유료 제휴나 파트너스 활동을 하지 않는 단계라면 `유료 제휴/파트너스 고지 문구 포함` 옵션은 꺼두세요. 나중에 실제 제휴 링크를 쓰기 시작하면 이 옵션을 켜서 업로드 문구에 고지를 포함할 수 있습니다.
 
+## 파이프라인 서버 + 이미지 생성 (GPT · Higgsfield)
+
+```powershell
+python pipeline_server.py        # http://localhost:8787
+```
+
+- `/` — 6단계 쇼츠 파이프라인 (n8n 스타일 캔버스)
+- `/image` — **사진/그림 생성** (Higgsfield Soul text-to-image). 프롬프트·비율·장수를 넣으면 이미지가 `outputs/pipeline_runs/_uploads/`에 저장되고, "쇼츠 만들기 →"로 그 이미지를 제품 이미지로 바로 넘길 수 있다. `.env`의 `HIGGSFIELD_API_KEY/SECRET` 필요, 장당 크레딧 소모. 모델은 `HIGGSFIELD_IMAGE_MODEL`로 교체 가능(기본 `higgsfield-ai/soul/standard`). **사진 첨부(최대 8장)** 하면 그 사진을 참고/수정/합성한다 — 이때 모델은 `HIGGSFIELD_EDIT_MODEL`(기본 `higgsfield-ai/popcorn/auto`, 출력 720p). 결과 카드의 "이어서 편집"으로 결과물을 다시 첨부해 계속 고칠 수 있다.
+
+  **엔진 선택 — GPT / Higgsfield (둘 다 선택 가능).** 화면 위 엔진 버튼으로 고른다. 둘 다 켜면 같은 프롬프트로 나란히 돌려 결과를 한 화면에서 비교하고(카드마다 엔진 배지), 한쪽만 실패해도 성공한 쪽은 그대로 나온다.
+  - **GPT** — OpenAI Images API(`gpt-image-2`, `OPENAI_IMAGE_MODEL`로 교체 가능). `.env`의 `OPENAI_API_KEY`만 있으면 되고 **API 크레딧**에서 차감된다(ChatGPT 구독 쿼터 아님). 첨부 없으면 `/v1/images/generations`, 첨부가 있으면 `/v1/images/edits`로 간다. 폭·높이가 16의 배수여야 해서 비율→크기는 `SIZE_BY_ASPECT`로 고정 매핑(9:16 → 1024x1824).
+  - **참고 이미지 순서** — 두 엔진 모두 첨부가 2장 이상이면 프롬프트 앞에 `first image = …, second image = …` 라벨이 자동으로 붙어 "첫 번째 사진의 인물을 두 번째 사진 배경에"처럼 번호로 지목할 수 있다. UI 썸네일에도 ①②③ 번호가 표시된다.
+
 ## 서버 배포 (Streamlit Community Cloud)
 
 폰이나 다른 PC에서 쓰고 싶으면 무료로 배포할 수 있습니다.

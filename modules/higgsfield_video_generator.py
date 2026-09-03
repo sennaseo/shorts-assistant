@@ -233,3 +233,108 @@ def generate_higgsfield_video(
         return {"path": None, "success": False, "error": f"Higgsfield API 오류({exc.code}): {detail}"}
     except Exception as exc:
         return {"path": None, "success": False, "error": f"Higgsfield 영상 생성 실패: {exc}"}
+
+
+# ─────────────────────────── 이미지 생성 (Soul text-to-image) ───────────────────────────
+DEFAULT_IMAGE_MODEL = os.getenv("HIGGSFIELD_IMAGE_MODEL", "").strip() or "higgsfield-ai/soul/standard"
+# 첨부 이미지가 있을 때(참고·수정·합성) 쓰는 모델 — popcorn/auto는 image_urls 최대 8장.
+# nano-banana·flux-kontext는 이 계정에서 404 model_not_found, reve/*는 423 model_blocked (2026-08-19 실측).
+DEFAULT_EDIT_MODEL = os.getenv("HIGGSFIELD_EDIT_MODEL", "").strip() or "higgsfield-ai/popcorn/auto"
+IMAGE_ASPECT_RATIOS = ("1:1", "4:3", "3:4", "3:2", "2:3", "5:4", "4:5", "16:9", "9:16", "21:9")
+MAX_REFERENCE_IMAGES = 8
+_ORDINALS = ("first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth")
+_EXT_BY_MIME = {v: k for k, v in _MIME_BY_EXT.items() if k != ".jpeg"}
+
+
+def generate_higgsfield_image(
+    prompt: str,
+    output_dir: str | Path,
+    aspect_ratio: str = "9:16",
+    num_images: int = 1,
+    resolution: str = "",
+    file_prefix: str = "img_",
+    reference_images: list[str | Path] | None = None,
+    base_url: str = DEFAULT_BASE_URL,
+    model: str = "",
+    timeout_sec: int = GENERATION_TIMEOUT_SEC,
+) -> dict[str, object]:
+    """텍스트 프롬프트(+선택: 참고 이미지들)로 사진/그림을 생성해 output_dir에 저장한다. 반환: {paths, success, error}.
+
+    - reference_images 없음 → DEFAULT_IMAGE_MODEL(Soul) 텍스트→이미지
+    - reference_images 있음 → DEFAULT_EDIT_MODEL(popcorn/auto) — 첨부 사진을 참고/수정/합성
+    영상 생성과 같은 요청/폴링 프로토콜 — POST /{model} → status_url 폴링 → images[].url 다운로드.
+    """
+    if not is_higgsfield_available():
+        return {"paths": [], "success": False, "error": "HIGGSFIELD_API_KEY가 설정되지 않았습니다."}
+    prompt = (prompt or "").strip()
+    if not prompt:
+        return {"paths": [], "success": False, "error": "프롬프트가 비어 있습니다."}
+    refs = [Path(p) for p in (reference_images or [])][:MAX_REFERENCE_IMAGES]
+    for ref in refs:
+        if not ref.is_file():
+            return {"paths": [], "success": False, "error": f"참고 이미지를 찾을 수 없습니다: {ref.name}"}
+    if not model:
+        model = DEFAULT_EDIT_MODEL if refs else DEFAULT_IMAGE_MODEL
+    if aspect_ratio not in IMAGE_ASPECT_RATIOS:
+        aspect_ratio = "9:16"
+    num_images = min(4, max(1, int(num_images or 1)))
+    # 첨부가 2장 이상이면 프롬프트에서 "first image"/"second image"로 지목할 수 있게 순서를 명시한다.
+    # (image_urls 순서 = 첨부 순서지만, 모델은 프롬프트에 적힌 순서 라벨을 보고 구분한다)
+    if len(refs) > 1:
+        labels = ", ".join(f"{_ORDINALS[i]} image = {ref.name}" for i, ref in enumerate(refs))
+        prompt = (f"Reference images are given in this order: {labels}. "
+                  f"Refer to them as first/second image in that order.\n{prompt}")
+
+    try:
+        payload = {"prompt": prompt, "aspect_ratio": aspect_ratio, "num_images": num_images}
+        if resolution:   # soul/standard는 '720p'|'1080p'만 받는다(2026-08-19 실측 422). 비우면 서버 기본값.
+            payload["resolution"] = resolution
+        if refs:
+            urls = []
+            for ref in refs:
+                public_url, err = _upload_image(base_url, ref, ref.read_bytes())
+                if err:
+                    return {"paths": [], "success": False, "error": err}
+                urls.append(public_url)
+            payload["image_urls"] = urls
+        job = _request_json("POST", f"{base_url}/{model}", payload, timeout=30)
+        request_id = job.get("request_id")
+        if not request_id:
+            return {"paths": [], "success": False, "error": f"Higgsfield 생성 요청 실패: {job}"}
+
+        result = _wait_for_completion(base_url, job.get("status_url"), request_id, timeout_sec)
+        status = result.get("status", "timeout")
+        if status == "timeout":
+            return {"paths": [], "success": False, "error": f"Higgsfield 생성 시간 초과({timeout_sec}초)."}
+        if status != "completed":
+            return {"paths": [], "success": False,
+                    "error": f"Higgsfield 생성 실패(status={status}): {result.get('error') or result}"}
+
+        urls = [im.get("url") for im in (result.get("images") or []) if isinstance(im, dict) and im.get("url")]
+        if not urls:
+            return {"paths": [], "success": False, "error": "완료됐지만 결과 이미지 URL이 없습니다."}
+
+        out_dir = Path(output_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        paths = []
+        for i, url in enumerate(urls):
+            req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                mime = (resp.headers.get("Content-Type") or "").split(";")[0].strip()
+                data = resp.read()
+            ext = _EXT_BY_MIME.get(mime) or Path(url.split("?")[0]).suffix.lower() or ".png"
+            if ext not in _MIME_BY_EXT:
+                ext = ".png"
+            path = out_dir / f"{file_prefix}{i}{ext}"
+            path.write_bytes(data)
+            paths.append(path)
+        return {"paths": paths, "success": True, "error": ""}
+    except urllib.error.HTTPError as exc:
+        detail = ""
+        try:
+            detail = _extract_error_message(exc.read().decode("utf-8"))
+        except Exception:
+            pass
+        return {"paths": [], "success": False, "error": f"Higgsfield API 오류({exc.code}): {detail}"}
+    except Exception as exc:
+        return {"paths": [], "success": False, "error": f"Higgsfield 이미지 생성 실패: {exc}"}

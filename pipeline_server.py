@@ -37,7 +37,9 @@ from modules.script_generator import generate_script                      # noqa
 from modules.llm_script_generator import generate_script_llm, llm_available  # noqa: E402
 from modules.gpt_script_generator import generate_script_gpt, gpt_available  # noqa: E402
 from modules.higgsfield_video_generator import (                          # noqa: E402
-    generate_higgsfield_video, is_higgsfield_available)
+    generate_higgsfield_video, generate_higgsfield_image, is_higgsfield_available)
+from modules.openai_image_generator import (                              # noqa: E402
+    generate_openai_image, is_openai_image_available)
 from modules.edge_tts_generator import generate_edge_tts                  # noqa: E402
 from modules.voicebox_tts_generator import generate_voicebox_tts, is_voicebox_available  # noqa: E402
 from modules.typecast_formatter import format_for_typecast                # noqa: E402
@@ -50,6 +52,7 @@ RUNS_DIR = ROOT / "outputs" / "pipeline_runs"
 UPLOADS_DIR = RUNS_DIR / "_uploads"
 UPLOAD_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 UI_FILE = ROOT / "pipeline_ui.html"
+IMAGE_UI_FILE = ROOT / "image_ui.html"
 
 RUNS: dict[str, dict] = {}   # run_id -> {"q": Queue, "history": [], "done": bool}
 RUNS_LOCK = threading.Lock()
@@ -580,10 +583,18 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(404, "pipeline_ui.html not found".encode(), "text/plain")
             return
 
+        if path == "/image":
+            if IMAGE_UI_FILE.exists():
+                self._send(200, IMAGE_UI_FILE.read_bytes(), "text/html; charset=utf-8")
+            else:
+                self._send(404, "image_ui.html not found".encode(), "text/plain")
+            return
+
         if path == "/api/health":
             self._json(200, {"ok": True, "llm_available": llm_available(),
                              "gpt_available": gpt_available(),
                              "higgsfield_available": is_higgsfield_available(),
+                             "openai_image_available": is_openai_image_available(),
                              "voicebox_available": is_voicebox_available(),
                              "server": "shorts-pipeline", "port": PORT})
             return
@@ -626,7 +637,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(404, {"error": "file not found"})
                 return
             ctype = {"mp3": "audio/mpeg", "wav": "audio/wav", "mp4": "video/mp4", "srt": "text/plain; charset=utf-8",
-                     "txt": "text/plain; charset=utf-8", "json": "application/json; charset=utf-8"
+                     "txt": "text/plain; charset=utf-8", "json": "application/json; charset=utf-8",
+                     "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp",
                      }.get(target.suffix.lstrip("."), "application/octet-stream")
             self._serve_file(target, ctype)
             return
@@ -656,6 +668,73 @@ class Handler(BaseHTTPRequestHandler):
                 image_id = uuid.uuid4().hex[:8] + ext
                 (UPLOADS_DIR / image_id).write_bytes(data)
                 self._json(200, {"image_id": image_id})
+            except Exception as exc:
+                self._json(500, {"error": str(exc)})
+            return
+
+        if path == "/api/image":
+            # 사진/그림 생성 (Higgsfield Soul, 실비 소모). 생성물은 _uploads에 저장해
+            # 그대로 쇼츠 파이프라인의 제품 이미지(image_id)로 쓸 수 있게 한다.
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                body = json.loads(self.rfile.read(length) or b"{}")
+                prompt = (body.get("prompt") or "").strip()
+                if not prompt:
+                    self._json(400, {"error": "프롬프트를 입력하세요."})
+                    return
+                # 엔진 선택: gpt(OpenAI Images) · higgsfield. 둘 다 고르면 나란히 돌려 결과를 합친다.
+                engines = [e for e in (body.get("engines") or ["higgsfield"]) if e in ("gpt", "higgsfield")]
+                if not engines:
+                    self._json(400, {"error": "엔진을 하나 이상 고르세요 (gpt · higgsfield)."})
+                    return
+                missing = [name for name, ok in
+                           (("gpt", is_openai_image_available()), ("higgsfield", is_higgsfield_available()))
+                           if name in engines and not ok]
+                if missing:
+                    key = "OPENAI_API_KEY" if missing[0] == "gpt" else "HIGGSFIELD_API_KEY"
+                    self._json(400, {"error": f"{key} 미설정 — .env에 키를 넣고 서버를 다시 켜세요."})
+                    return
+                UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+                # 첨부 이미지: /api/upload-image로 먼저 올린 image_id 목록 (경로 탈출 방지: 파일명만)
+                refs = []
+                for img in (body.get("image_ids") or [])[:8]:
+                    f = UPLOADS_DIR / Path(str(img)).name
+                    if f.suffix.lower() in UPLOAD_EXTS and f.is_file():
+                        refs.append(f)
+                aspect = body.get("aspect_ratio") or "9:16"
+                count = body.get("num_images") or 1
+                results: dict[str, dict] = {}
+
+                def run(engine: str) -> None:
+                    fn = generate_openai_image if engine == "gpt" else generate_higgsfield_image
+                    prefix = f"gen_{engine}_" + uuid.uuid4().hex[:8] + "_"
+                    try:
+                        results[engine] = fn(prompt, UPLOADS_DIR, aspect_ratio=aspect,
+                                             num_images=count, file_prefix=prefix,
+                                             reference_images=refs)
+                    except Exception as exc:
+                        results[engine] = {"paths": [], "success": False, "error": str(exc)}
+
+                threads = [threading.Thread(target=run, args=(e,), daemon=True) for e in engines]
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join()
+
+                images, errors = [], []
+                for engine in engines:
+                    r = results.get(engine) or {}
+                    if r.get("success"):
+                        images.extend({"image_id": p.name, "url": f"/files/_uploads/{p.name}",
+                                       "engine": engine} for p in r["paths"])
+                    else:
+                        errors.append(f"{'GPT' if engine == 'gpt' else 'Higgsfield'}: "
+                                      f"{r.get('error') or '생성 실패'}")
+                if not images:
+                    self._json(502, {"error": "\n".join(errors) or "생성 실패"})
+                    return
+                # 일부만 성공하면 성공분은 돌려주고 실패 사유도 함께 알린다.
+                self._json(200, {"images": images, "error": "\n".join(errors)})
             except Exception as exc:
                 self._json(500, {"error": str(exc)})
             return
@@ -746,9 +825,11 @@ def main():
     print("─" * 52)
     print("  🎬 Shorts 파이프라인 서버 시작")
     print(f"  브라우저에서 열기 →  http://localhost:{PORT}")
+    print(f"  이미지 생성(사진/그림) →  http://localhost:{PORT}/image")
     print(f"  대본 엔진: GPT {'O' if gpt_available() else 'X'} · Claude {'O' if llm_available() else 'X'}"
           f" (둘 다 미설정 시 템플릿)")
-    print(f"  Higgsfield: {'사용 가능' if is_higgsfield_available() else '미설정'}")
+    print(f"  이미지 엔진: GPT {'O' if is_openai_image_available() else 'X'}"
+          f" · Higgsfield {'O' if is_higgsfield_available() else 'X'}")
     print(f"  산출물 폴더: {RUNS_DIR}")
     print("  종료: Ctrl+C")
     print("─" * 52)
