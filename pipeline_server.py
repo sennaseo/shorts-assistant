@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import io
 import json
 import os
 import queue
@@ -24,6 +25,7 @@ import threading
 import time
 import traceback
 import uuid
+import zipfile
 from datetime import datetime
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -151,6 +153,65 @@ def load_state(run_dir: Path) -> dict | None:
         return json.loads(f.read_text(encoding="utf-8"))
     except Exception:
         return None
+
+
+FILE_KIND = {".mp3": "audio", ".wav": "audio", ".mp4": "video", ".srt": "subtitle", ".txt": "text"}
+
+
+def _run_dir(run_id: str) -> Path | None:
+    """run_id → 검증된 run 폴더. 경로 탈출·없는 폴더·_uploads 는 None."""
+    name = Path(run_id).name
+    if not name or name.startswith("_") or name in (".", ".."):
+        return None
+    d = (RUNS_DIR / name).resolve()
+    if not str(d).startswith(str(RUNS_DIR.resolve())) or not d.is_dir():
+        return None
+    return d
+
+
+def list_runs() -> list[dict]:
+    out = []
+    for d in RUNS_DIR.iterdir() if RUNS_DIR.is_dir() else []:
+        if not d.is_dir() or d.name.startswith("_") or not (d / "summary.json").is_file():
+            continue
+        try:
+            summary = json.loads((d / "summary.json").read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        state = load_state(d) or {}
+        items = state.get("items") or []
+        out.append({"run_id": d.name, "finished": summary.get("finished", ""),
+                    "elapsed_sec": summary.get("elapsed_sec"),
+                    "product_name": (items[0].get("product_name") if items else "") or "",
+                    "passed": summary.get("passed", 0), "failed": summary.get("failed", 0)})
+    out.sort(key=lambda r: r["run_id"], reverse=True)
+    return out
+
+
+def run_detail(run_id: str) -> dict | None:
+    d = _run_dir(run_id)
+    if not d:
+        return None
+    state = load_state(d) or {}
+    try:
+        summary = json.loads((d / "summary.json").read_text(encoding="utf-8"))
+    except Exception:
+        summary = {}
+    items = []
+    for it in state.get("items") or []:
+        idx = it.get("_item", len(items))
+        item_dir = d / f"item_{idx}"
+        files = []
+        for p in sorted(item_dir.iterdir()) if item_dir.is_dir() else []:
+            if p.is_file():
+                kind = "subtitle" if p.name == "capcut_subtitles.txt" else FILE_KIND.get(p.suffix.lower(), "other")
+                files.append({**file_ref(d.name, p), "kind": kind})
+        items.append({"index": idx,
+                      **{k: it.get(k) for k in ("product_name", "category", "features", "script",
+                                                "script_source", "tts_engine", "audio_sec",
+                                                "quality", "upload_text")},
+                      "files": files})
+    return {"run_id": d.name, "summary": summary, "options": state.get("options") or {}, "items": items}
 
 
 # ── 단계 함수: items를 제자리에서 갱신하고 노드 이벤트를 기존과 동일한 순서로 발행 ──
@@ -648,6 +709,18 @@ class Handler(BaseHTTPRequestHandler):
                              "server": "shorts-pipeline", "port": PORT})
             return
 
+        if path == "/api/runs":
+            self._json(200, {"runs": list_runs()})
+            return
+
+        if path.startswith("/api/runs/"):
+            detail = run_detail(path[len("/api/runs/"):])
+            if not detail:
+                self._json(404, {"error": "run 폴더 없음"})
+                return
+            self._json(200, detail)
+            return
+
         if path.startswith("/api/events/"):
             run_id = path.rsplit("/", 1)[-1]
             with RUNS_LOCK:
@@ -684,6 +757,20 @@ class Handler(BaseHTTPRequestHandler):
                     time.sleep(0.15)
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                 return
+
+        if path.startswith("/files/") and path.endswith(".zip") and path.count("/") == 2:
+            d = _run_dir(path[len("/files/"):-4])
+            if not d:
+                self._json(404, {"error": "run 폴더 없음"})
+                return
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+                for p in sorted(d.rglob("*")):
+                    if p.is_file():
+                        z.write(p, p.relative_to(d).as_posix())
+            self._send(200, buf.getvalue(), "application/zip",
+                       {"Content-Disposition": f'attachment; filename="{d.name}.zip"'})
+            return
 
         if path.startswith("/files/"):
             rel = path[len("/files/"):]
