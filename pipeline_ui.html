@@ -254,7 +254,9 @@ function stepStatus(step){
 function renderProgress(){
   $('steps').innerHTML = STEPS.map(function(s){
     const st = stepStatus(s);
-    const note = s.nodes.map(function(n){ return nodeState[n] && nodeState[n].note; }).filter(Boolean).pop() || s.sub;
+    const notes = s.nodes.map(function(n){ return nodeState[n]; }).filter(Boolean);
+    const own = notes.filter(function(n){ return n.status === st && n.note; }).pop();
+    const note = (own && own.note) || notes.map(function(n){ return n.note; }).filter(Boolean).pop() || s.sub;
     return '<div class="step ' + st + '"><div class="ic">' + s.icon + '</div><div><b>' + s.label + '</b><small>' + esc(note) + '</small></div>' +
            '<span class="st">' + ST_LABEL[st] + '</span></div>';
   }).join('');
@@ -273,9 +275,94 @@ function followRun(runId, onDone){
 function showError(msg){ $('err-msg').textContent = msg || '알 수 없는 오류'; $('err-card').hidden = false; $('btn-run').disabled = false; }
 $('btn-retry').onclick = function(){ location.hash = ''; showScreen('make'); };
 
-/* Task 5에서 채움 */
-function showResult(runId){ location.hash = '#run=' + runId; }
-function showHistory(){ showScreen('history'); }
+/* ── 결과 화면 ── */
+function splitSections(text){
+  // "[제목]\n본문…" 블록들로 나눈다 → [{title, body}]
+  const out = []; let cur = null;
+  String(text || '').split('\n').forEach(function(line){
+    const m = line.match(/^\[(.+)\]$/);
+    if(m){ cur = {title:m[1], body:[]}; out.push(cur); }
+    else if(cur){ cur.body.push(line); }
+  });
+  return out.map(function(s){ return {title:s.title, body:s.body.join('\n').trim()}; }).filter(function(s){ return s.body; });
+}
+function fileRow(f){ return '<a href="' + f.url + '" download>' + esc(f.name) + '<small>' + esc(f.size) + '</small></a>'; }
+function itemCards(runId, it, single){
+  const audio = it.files.filter(function(f){ return f.kind === 'audio'; })[0];
+  const videos = it.files.filter(function(f){ return f.kind === 'video'; });
+  const title = single ? '' : '<div class="chip">' + esc(it.product_name) + '</div>';
+  let html = '';
+  html += '<div class="card">' + title + '<h2>대본</h2><textarea class="script" readonly>' + esc(it.script) + '</textarea>' +
+    '<div class="hint">' + esc(it.script_source === 'gpt' ? 'GPT 작성' : it.script_source === 'claude' ? 'Claude 작성' : '템플릿') + (it.quality ? ' · ' + esc(it.quality) : '') + '</div>' +
+    '<div class="row"><button class="btn ghost sm" data-copy="script">복사</button><button class="btn ghost sm" data-step="script">대본 다시 만들기</button></div></div>';
+  html += '<div class="card"><h2>음성</h2>' + (audio ? '<audio controls preload="none" src="' + audio.url + '"></audio><div class="hint">' + esc(it.tts_engine || '') + (it.audio_sec ? ' · ' + Number(it.audio_sec).toFixed(1) + '초' : '') + '</div>'
+    : '<p class="hint">음성을 만들지 않았어요</p>') + '<div class="row"><button class="btn ghost sm" data-step="tts">음성 ' + (audio ? '다시 ' : '') + '만들기</button></div></div>';
+  if(videos.length) html += '<div class="card"><h2>영상</h2>' + videos.map(function(v){ return '<div class="hint">' + esc(v.name) + '</div><video controls playsinline preload="metadata" src="' + v.url + '"></video>'; }).join('') + '</div>';
+  html += '<div class="card"><h2>업로드 문구</h2>' + splitSections(it.upload_text).map(function(s, i){
+    return '<div class="sec"><h3>' + esc(s.title) + '</h3><pre>' + esc(s.body) + '</pre><div class="row"><button class="btn ghost sm" data-copy="sec' + i + '">복사</button></div></div>';
+  }).join('') + '</div>';
+  html += '<div class="card"><h2>파일</h2><div class="files">' + it.files.map(fileRow).join('') + '</div>' +
+    '<div class="row"><a class="btn ghost" href="/files/' + runId + '.zip">전체 zip 다운로드</a>' +
+    (health.local ? '<button class="btn ghost" data-folder="1">폴더 열기</button>' : '') + '</div></div>';
+  return html;
+}
+function showResult(runId){
+  if(location.hash !== '#run=' + runId) { location.hash = '#run=' + runId; return; }
+  showScreen('result'); $('result-body').innerHTML = '<div class="card"><p class="hint">불러오는 중…</p></div>';
+  api('/api/runs/' + encodeURIComponent(runId)).then(function(r){
+    const single = r.items.length === 1;
+    $('result-body').innerHTML = '<div class="card"><h2>완성!</h2><p class="hint">' + esc(r.summary.finished || '') + (r.summary.elapsed_sec ? ' · ' + r.summary.elapsed_sec + '초' : '') + '</p></div>' +
+      r.items.map(function(it){ return '<div data-item="' + it.index + '">' + itemCards(runId, it, single) + '</div>'; }).join('') +
+      '<div class="card"><button class="btn" id="btn-new">새로 만들기</button></div>';
+    $('btn-new').onclick = function(){ location.hash = ''; };
+    $('result-body').querySelectorAll('[data-copy]').forEach(function(b){
+      b.onclick = function(){
+        const card = b.closest('[data-item]'); const it = r.items[Number(card.getAttribute('data-item'))] || r.items[0];
+        const key = b.getAttribute('data-copy');
+        const text = key === 'script' ? it.script : splitSections(it.upload_text)[Number(key.slice(3))].body;
+        copyText(text);
+      };
+    });
+    $('result-body').querySelectorAll('[data-step]').forEach(function(b){
+      b.onclick = function(){
+        const step = b.getAttribute('data-step');
+        const opts = step === 'tts' ? {tts:true, voice:$('f-voice').value, rate:$('f-rate').value} : {};
+        api('/api/run-step', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({step:step, base_run_id:runId, options:opts})})
+          .then(function(j){ $('run-summary').textContent = (r.items[0].product_name || '') + ' · ' + (step === 'script' ? '대본' : '음성') + ' 다시 만드는 중';
+            nodeState = {}; renderProgress(); $('log-list').innerHTML = ''; $('err-card').hidden = true; showScreen('progress');
+            followRun(j.run_id, function(done){ if(done.ok){ location.hash = ''; location.hash = '#run=' + runId; } else showError(done.error); });
+          }).catch(function(e){ toast(e.message); });
+      };
+    });
+    const fb = $('result-body').querySelector('[data-folder]');
+    if(fb) fb.onclick = function(){ api('/api/open-folder', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({run_id:runId})}).then(function(){ toast('폴더를 열었어요'); }).catch(function(e){ toast(e.message); }); };
+  }).catch(function(e){ $('result-body').innerHTML = '<div class="card err-card"><b>결과를 불러올 수 없어요</b><p>' + esc(e.message) + '</p></div>'; });
+}
+
+/* ── 지난 제작 ── */
+function showHistory(){
+  showScreen('history'); $('history-list').innerHTML = '<p class="hint">불러오는 중…</p>';
+  api('/api/runs').then(function(j){
+    if(!j.runs.length){ $('history-list').innerHTML = '<p class="empty">아직 만든 쇼츠가 없어요<br><a href="#make">쇼츠 만들기 →</a></p>'; return; }
+    $('history-list').innerHTML = j.runs.map(function(r){
+      const st = r.failed ? '통과 ' + r.passed + ' · 탈락 ' + r.failed : '완료';
+      return '<a class="hist" href="#run=' + r.run_id + '"><b>' + esc(r.product_name || '(제품명 없음)') + '</b><small>' + esc((r.finished || '').replace('T', ' ')) + ' · ' + st + '</small></a>';
+    }).join('');
+  }).catch(function(e){ $('history-list').innerHTML = '<p class="empty">' + esc(e.message) + '</p>'; });
+}
+
+/* ── 새로고침 복구: 진행 중이던 run 이 있으면 다시 따라간다 ── */
+(function(){
+  let cur = ''; try{ cur = sessionStorage.getItem('currentRun') || ''; }catch(e){}
+  if(!cur || location.hash) return;
+  // 서버에 do_HEAD 가 없어서 GET 으로 열어보고 바로 끊는다 (살아있는 run 이면 200)
+  const ac = new AbortController();
+  fetch('/api/events/' + cur, {signal: ac.signal}).then(function(r){
+    const live = r.ok; ac.abort();
+    if(live){ nodeState = {}; renderProgress(); showScreen('progress'); followRun(cur, function(done){ if(done.ok) showResult(done.summary.run_id); else showError(done.error); }); }
+    else { try{ sessionStorage.removeItem('currentRun'); }catch(e){} }
+  }).catch(function(){});
+})();
 
 route();
 </script>
