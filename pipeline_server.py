@@ -48,6 +48,8 @@ from modules.srt_generator import save_srt, get_audio_duration_seconds    # noqa
 from modules.upload_text_generator import generate_upload_text            # noqa: E402
 
 PORT = int(os.environ.get("PIPELINE_PORT", "8787"))
+HOST = os.environ.get("PIPELINE_HOST", "127.0.0.1")   # 도커에서만 0.0.0.0
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "").strip()  # 비어 있으면 게이트 없음 (Task 2에서 사용)
 RUNS_DIR = ROOT / "outputs" / "pipeline_runs"
 UPLOADS_DIR = RUNS_DIR / "_uploads"
 UPLOAD_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
@@ -596,6 +598,7 @@ class Handler(BaseHTTPRequestHandler):
                              "higgsfield_available": is_higgsfield_available(),
                              "openai_image_available": is_openai_image_available(),
                              "voicebox_available": is_voicebox_available(),
+                             "local": hasattr(os, "startfile"),
                              "server": "shorts-pipeline", "port": PORT})
             return
 
@@ -612,6 +615,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Connection", "close")
             self.end_headers()
             sent = 0
+            last_write = time.time()
             try:
                 while True:
                     with RUNS_LOCK:
@@ -622,10 +626,15 @@ class Handler(BaseHTTPRequestHandler):
                         payload = f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
                         self.wfile.write(payload.encode("utf-8"))
                         self.wfile.flush()
+                        last_write = time.time()
                         if ev.get("type") == "done":
                             return
                     if done and sent >= len(history):
                         return
+                    if time.time() - last_write > 15:   # 프록시(nginx) 유휴 끊김 방지
+                        self.wfile.write(b": ping\n\n")
+                        self.wfile.flush()
+                        last_write = time.time()
                     time.sleep(0.15)
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                 return
@@ -821,11 +830,12 @@ def main():
     except Exception:
         pass
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
-    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    server = ThreadingHTTPServer((HOST, PORT), Handler)
     print("─" * 52)
     print("  🎬 Shorts 파이프라인 서버 시작")
     print(f"  브라우저에서 열기 →  http://localhost:{PORT}")
     print(f"  이미지 생성(사진/그림) →  http://localhost:{PORT}/image")
+    print(f"  바인딩: {HOST}:{PORT} · 비밀번호 잠금: {'켜짐' if APP_PASSWORD else '꺼짐 (APP_PASSWORD 미설정)'}")
     print(f"  대본 엔진: GPT {'O' if gpt_available() else 'X'} · Claude {'O' if llm_available() else 'X'}"
           f" (둘 다 미설정 시 템플릿)")
     print(f"  이미지 엔진: GPT {'O' if is_openai_image_available() else 'X'}"
