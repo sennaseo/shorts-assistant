@@ -75,6 +75,8 @@ def test_password_gate_redirects_html_and_401_api(server, monkeypatch):
     # API는 401 JSON
     code, _, body = get(server + "/api/health")
     assert code == 401 and json.loads(body)["error"]
+    code, _, body = get(server + "/files/whatever/x.mp3")
+    assert code == 401 and json.loads(body)["error"]
     # 로그인 페이지 자체는 열림
     code, _, body = get(server + "/login")
     assert code == 200 and b"password" in body

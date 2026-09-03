@@ -137,10 +137,10 @@
       <div class="row"><button class="btn ghost" id="btn-retry" type="button">처음으로</button></div></div>
   </section>
 
-  <!-- 화면 C: 결과 (Task 5가 채움) -->
+  <!-- 화면 C: 결과 -->
   <section id="scr-result" hidden><div id="result-body"></div></section>
 
-  <!-- 지난 제작 (Task 5가 채움) -->
+  <!-- 지난 제작 -->
   <section id="scr-history" hidden><div class="card"><h2>지난 제작</h2><div id="history-list"></div></div></section>
 </div>
 
@@ -240,7 +240,7 @@ function beginProgress(options){
   if(!options.tts) nodeState.tts = {status:'skipped', note:'옵션 꺼짐'};
   if(!options.render) nodeState.render = {status:'skipped', note:'옵션 꺼짐'};
   if(!options.higgsfield) nodeState.higgsfield = {status:'skipped', note:'옵션 꺼짐'};
-  renderProgress(nodeState); showScreen('progress');
+  renderProgress(); showScreen('progress');
 }
 function stepStatus(step){
   const sts = step.nodes.map(function(n){ return nodeState[n] && nodeState[n].status; });
@@ -286,7 +286,7 @@ function splitSections(text){
   });
   return out.map(function(s){ return {title:s.title, body:s.body.join('\n').trim()}; }).filter(function(s){ return s.body; });
 }
-function fileRow(f){ return '<a href="' + f.url + '" download>' + esc(f.name) + '<small>' + esc(f.size) + '</small></a>'; }
+function fileRow(f){ return '<a href="' + esc(f.url) + '" download>' + esc(f.name) + '<small>' + esc(f.size) + '</small></a>'; }
 function itemCards(runId, it, single){
   const audio = it.files.filter(function(f){ return f.kind === 'audio'; })[0];
   const videos = it.files.filter(function(f){ return f.kind === 'video'; });
@@ -295,14 +295,14 @@ function itemCards(runId, it, single){
   html += '<div class="card">' + title + '<h2>대본</h2><textarea class="script" readonly>' + esc(it.script) + '</textarea>' +
     '<div class="hint">' + esc(it.script_source === 'gpt' ? 'GPT 작성' : it.script_source === 'claude' ? 'Claude 작성' : '템플릿') + (it.quality ? ' · ' + esc(it.quality) : '') + '</div>' +
     '<div class="row"><button class="btn ghost sm" data-copy="script">복사</button><button class="btn ghost sm" data-step="script">대본 다시 만들기</button></div></div>';
-  html += '<div class="card"><h2>음성</h2>' + (audio ? '<audio controls preload="none" src="' + audio.url + '"></audio><div class="hint">' + esc(it.tts_engine || '') + (it.audio_sec ? ' · ' + Number(it.audio_sec).toFixed(1) + '초' : '') + '</div>'
+  html += '<div class="card"><h2>음성</h2>' + (audio ? '<audio controls preload="none" src="' + esc(audio.url) + '"></audio><div class="hint">' + esc(it.tts_engine || '') + (it.audio_sec ? ' · ' + Number(it.audio_sec).toFixed(1) + '초' : '') + '</div>'
     : '<p class="hint">음성을 만들지 않았어요</p>') + '<div class="row"><button class="btn ghost sm" data-step="tts">음성 ' + (audio ? '다시 ' : '') + '만들기</button></div></div>';
-  if(videos.length) html += '<div class="card"><h2>영상</h2>' + videos.map(function(v){ return '<div class="hint">' + esc(v.name) + '</div><video controls playsinline preload="metadata" src="' + v.url + '"></video>'; }).join('') + '</div>';
+  if(videos.length) html += '<div class="card"><h2>영상</h2>' + videos.map(function(v){ return '<div class="hint">' + esc(v.name) + '</div><video controls playsinline preload="metadata" src="' + esc(v.url) + '"></video>'; }).join('') + '</div>';
   html += '<div class="card"><h2>업로드 문구</h2>' + splitSections(it.upload_text).map(function(s, i){
     return '<div class="sec"><h3>' + esc(s.title) + '</h3><pre>' + esc(s.body) + '</pre><div class="row"><button class="btn ghost sm" data-copy="sec' + i + '">복사</button></div></div>';
   }).join('') + '</div>';
   html += '<div class="card"><h2>파일</h2><div class="files">' + it.files.map(fileRow).join('') + '</div>' +
-    '<div class="row"><a class="btn ghost" href="/files/' + runId + '.zip">전체 zip 다운로드</a>' +
+    '<div class="row"><a class="btn ghost" href="/files/' + esc(runId) + '.zip">전체 zip 다운로드</a>' +
     (health.local ? '<button class="btn ghost" data-folder="1">폴더 열기</button>' : '') + '</div></div>';
   return html;
 }
@@ -311,7 +311,7 @@ function showResult(runId){
   showScreen('result'); $('result-body').innerHTML = '<div class="card"><p class="hint">불러오는 중…</p></div>';
   api('/api/runs/' + encodeURIComponent(runId)).then(function(r){
     const single = r.items.length === 1;
-    $('result-body').innerHTML = '<div class="card"><h2>완성!</h2><p class="hint">' + esc(r.summary.finished || '') + (r.summary.elapsed_sec ? ' · ' + r.summary.elapsed_sec + '초' : '') + '</p></div>' +
+    $('result-body').innerHTML = '<div class="card"><h2>완성!</h2><p class="hint">' + esc((r.summary.finished || '').replace('T', ' ')) + (r.summary.elapsed_sec ? ' · ' + r.summary.elapsed_sec + '초' : '') + '</p></div>' +
       r.items.map(function(it){ return '<div data-item="' + it.index + '">' + itemCards(runId, it, single) + '</div>'; }).join('') +
       '<div class="card"><button class="btn" id="btn-new">새로 만들기</button></div>';
     $('btn-new').onclick = function(){ location.hash = ''; };
@@ -346,7 +346,7 @@ function showHistory(){
     if(!j.runs.length){ $('history-list').innerHTML = '<p class="empty">아직 만든 쇼츠가 없어요<br><a href="#make">쇼츠 만들기 →</a></p>'; return; }
     $('history-list').innerHTML = j.runs.map(function(r){
       const st = r.failed ? '통과 ' + r.passed + ' · 탈락 ' + r.failed : '완료';
-      return '<a class="hist" href="#run=' + r.run_id + '"><b>' + esc(r.product_name || '(제품명 없음)') + '</b><small>' + esc((r.finished || '').replace('T', ' ')) + ' · ' + st + '</small></a>';
+      return '<a class="hist" href="#run=' + esc(r.run_id) + '"><b>' + esc(r.product_name || '(제품명 없음)') + '</b><small>' + esc((r.finished || '').replace('T', ' ')) + ' · ' + st + '</small></a>';
     }).join('');
   }).catch(function(e){ $('history-list').innerHTML = '<p class="empty">' + esc(e.message) + '</p>'; });
 }
