@@ -56,14 +56,17 @@ Reel Radar 와 같은 서버에 형제 서비스로 올린다. 폰에서 `https:
 
 **senna 가 먼저 할 것 (1회)**
 1. DuckDNS 에서 서브도메인 추가 (예: `shorts-maker`) → 서버 IP 로.
-2. GitHub `sennaseo/shorts-assistant` 저장소 Settings → Deploy keys 에 서버의 읽기 전용 키 등록
-   (서버에서 `ssh-keygen -t ed25519 -f ~/.ssh/shorts_deploy -N ""` 후 `.pub` 내용).
+2. 저장소가 **공개**면 그대로 https clone. 비공개로 돌리면 Deploy key 필요:
+   서버에서 `ssh-keygen -t ed25519 -f ~/.ssh/shorts_deploy -N ""` → `.pub` 을 GitHub 저장소 Settings → Deploy keys 에 등록하고,
+   clone 시 `GIT_SSH_COMMAND="ssh -i ~/.ssh/shorts_deploy" git clone git@github.com:sennaseo/shorts-assistant.git` +
+   `git config core.sshCommand "ssh -i ~/.ssh/shorts_deploy"` (서버 `~/.ssh/config` 가 github.com 을 reel-radar 키로 고정하고 있어서 명시 필요).
 
 **서버에서**
 ```bash
-GIT_SSH_COMMAND="ssh -i ~/.ssh/shorts_deploy" git clone git@github.com:sennaseo/shorts-assistant.git ~/shorts-assistant
-cd ~/shorts-assistant && git config core.sshCommand "ssh -i ~/.ssh/shorts_deploy"
+git clone https://github.com/sennaseo/shorts-assistant.git ~/shorts-assistant
+cd ~/shorts-assistant
 cp .env.example .env && nano .env      # DOMAIN, APP_PASSWORD, OPENAI_API_KEY, (선택) HIGGSFIELD_*
+                                       # 또는 로컬 .env 를 scp 로 올린 뒤 DOMAIN·APP_PASSWORD 두 줄만 추가
 deploy/first_deploy.sh
 ```
 
