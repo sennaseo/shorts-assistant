@@ -20,3 +20,5 @@ assets/generated_images/*
 
 deploy/.env
 deploy/nginx/*.generated.conf
+.env.bak*
+.env.*.bak

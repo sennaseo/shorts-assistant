@@ -30,7 +30,7 @@ def generate_script_gpt(
 
     payload = {
         "model": model or DEFAULT_MODEL,
-        "max_tokens": 1024,
+        "max_completion_tokens": 1024,
         "messages": [{"role": "user", "content": _build_prompt(product_info)}],
     }
     request = urllib.request.Request(
